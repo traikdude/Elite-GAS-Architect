@@ -154,7 +154,13 @@ function MASTER_initManually() {
  *  3) MENUS (Master + Enhancement + Debug)
  *  ======================================================================= */
 function MASTER_buildMenus_() {
-  const ui = SpreadsheetApp.getUi();
+  let ui;
+  try {
+    ui = SpreadsheetApp.getUi();
+  } catch (e) {
+    console.warn("MASTER_buildMenus_: Cannot access UI (likely running in non-bound context). Skipping menu creation.");
+    return;
+  }
 
   // Master menu
   const menu = ui.createMenu(`${MASTER_CONFIG.MENU_NAME} ${MASTER_CONFIG.MENU_EMOJI}`);
