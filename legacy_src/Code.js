@@ -165,6 +165,8 @@ function MASTER_buildMenus_() {
   // Master menu
   const menu = ui.createMenu(`${MASTER_CONFIG.MENU_NAME} ${MASTER_CONFIG.MENU_EMOJI}`);
   menu.addItem("🎛️ Control Bridge Dashboard", "BRIDGE_openSheet");
+  menu.addItem("📥 Action Queue", "QUEUE_openSheet");
+  menu.addItem("📊 Dashboard Control Panel", "QUEUE_ensureDashboardSheet_");
   menu.addSeparator();
   menu.addItem("🏠 Open Sidebar (Quick Panel)", "MASTER_showSidebar");
   menu.addItem("🌐 Open Web App UI", "MASTER_openWebAppLink");
@@ -183,6 +185,9 @@ function MASTER_buildMenus_() {
   menu.addSeparator();
   menu.addItem("🔗 Link Manager (Set URLs)", "MASTER_showLinkManagerDialog");
   menu.addItem("🔄 Reset Links to Blank", "MASTER_resetLinks");
+  menu.addSeparator();
+  menu.addItem("📤 Process Action Queue", "QUEUE_menuProcessBatch");
+  menu.addItem("📦 Initialize All Control Sheets", "QUEUE_openAllSheets");
   menu.addSeparator();
   menu.addItem("💡 About / Help", "MASTER_showAboutDialog");
   menu.addToUi();
@@ -754,9 +759,18 @@ function MASTER_onEditHandler(e) {
     }
   }
 
-  // Skip logging for Control Bridge and Config sheets to avoid noise
+  // Route Dashboard enqueue actions
+  if (e && e.range) {
+    try {
+      QUEUE_handleDashboardEnqueue_(e);
+    } catch (dashErr) {
+      console.error("QUEUE_handleDashboardEnqueue_ error:", dashErr);
+    }
+  }
+
+  // Skip logging for Control Bridge, Config, and Dashboard sheets to avoid noise
   const sheetName = e && e.range ? e.range.getSheet().getName() : "";
-  if (sheetName === "_ControlBridge" || sheetName === "_Config") return;
+  if (sheetName === "_ControlBridge" || sheetName === "_Config" || sheetName === "Dashboard") return;
 
   const perf = MASTER_perfStart_();
   try {
@@ -2583,4 +2597,497 @@ function BRIDGE_buildLayout_(sheet) {
   sheet.setRowHeight(1, 30);
   sheet.setRowHeights(13, 8, 25); // Input area rows
   sheet.setRowHeights(24, 22, 20); // Output area rows
+}
+
+/** =======================================================================
+ *  17) ACTION QUEUE SYSTEM (Queue-Based Execution)
+ *  ======================================================================= */
+
+/**
+ * Action Queue Headers (matches template).
+ */
+function QUEUE_headers_() {
+  return [
+    "queue_id",
+    "created_iso_ms",
+    "requested_by",
+    "action_type",
+    "target_type",
+    "target_id",
+    "params_json",
+    "priority",
+    "status",
+    "status_message",
+    "result_link",
+    "result_id",
+    "started_iso_ms",
+    "completed_iso_ms",
+    "duration_ms",
+    "correlation_id"
+  ];
+}
+
+/**
+ * Ensures Action_Queue sheet exists.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet} The queue sheet.
+ */
+function QUEUE_ensureSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName("Action_Queue");
+  if (!sheet) {
+    sheet = ss.insertSheet("Action_Queue");
+    QUEUE_buildSheet_(sheet);
+  }
+  return sheet;
+}
+
+/**
+ * Builds the Action_Queue sheet with headers and formatting.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Queue sheet.
+ */
+function QUEUE_buildSheet_(sheet) {
+  const headers = QUEUE_headers_();
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+
+  // Header formatting
+  sheet.getRange(1, 1, 1, headers.length)
+    .setBackground("#111827")
+    .setFontColor("#F9FAFB")
+    .setFontWeight("bold");
+
+  sheet.setFrozenRows(1);
+
+  // Column widths
+  sheet.setColumnWidth(1, 100);  // queue_id
+  sheet.setColumnWidth(2, 180);  // created_iso_ms
+  sheet.setColumnWidth(3, 200);  // requested_by
+  sheet.setColumnWidth(4, 180);  // action_type
+  sheet.setColumnWidth(5, 120);  // target_type
+  sheet.setColumnWidth(6, 200);  // target_id
+  sheet.setColumnWidth(7, 250);  // params_json
+  sheet.setColumnWidth(8, 80);   // priority
+  sheet.setColumnWidth(9, 100);  // status
+  sheet.setColumnWidth(10, 250); // status_message
+  sheet.setColumnWidth(11, 250); // result_link
+  sheet.setColumnWidth(12, 120); // result_id
+  sheet.setColumnWidth(13, 180); // started_iso_ms
+  sheet.setColumnWidth(14, 180); // completed_iso_ms
+  sheet.setColumnWidth(15, 100); // duration_ms
+  sheet.setColumnWidth(16, 120); // correlation_id
+
+  // Create filter
+  if (!sheet.getFilter()) {
+    sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 2), headers.length).createFilter();
+  }
+}
+
+/**
+ * Opens the Action_Queue sheet.
+ */
+function QUEUE_openSheet() {
+  const ss = SpreadsheetApp.getActive();
+  const sheet = QUEUE_ensureSheet_();
+  ss.setActiveSheet(sheet);
+}
+
+/**
+ * Generates a unique queue ID.
+ * @returns {string} Queue ID (Q-XXXX format).
+ */
+function QUEUE_generateId_() {
+  const sheet = QUEUE_ensureSheet_();
+  const lastRow = sheet.getLastRow();
+  const num = lastRow; // Will be 1-based after header
+  return "Q-" + String(num).padStart(4, "0");
+}
+
+/**
+ * Adds an action to the queue.
+ * @param {Object} action - Action config.
+ * @returns {{ok:boolean,queueId?:string,message?:string}} Result.
+ */
+function QUEUE_enqueue(action) {
+  const perf = MASTER_perfStart_();
+  try {
+    const sheet = QUEUE_ensureSheet_();
+    const queueId = QUEUE_generateId_();
+    const now = new Date();
+
+    const row = [
+      queueId,
+      now.toISOString(),
+      MASTER_safeUserEmail_(),
+      action.actionType || "CUSTOM",
+      action.targetType || "TEXT",
+      action.targetId || "",
+      JSON.stringify(action.params || {}),
+      action.priority || "NORMAL",
+      "QUEUED",
+      "Waiting for processor",
+      "",
+      "",
+      "",
+      "",
+      "",
+      action.correlationId || "C-" + String(Math.random()).slice(2, 8)
+    ];
+
+    sheet.appendRow(row);
+
+    MASTER_logEvent_({
+      eventType: "queue",
+      action: "enqueue",
+      status: "success",
+      durationMs: MASTER_perfEnd_(perf),
+      meta: { queueId: queueId, actionType: action.actionType }
+    });
+
+    return { ok: true, queueId: queueId };
+  } catch (err) {
+    MASTER_logEvent_({
+      eventType: "queue",
+      action: "enqueue",
+      status: "failure",
+      durationMs: MASTER_perfEnd_(perf),
+      error: err
+    });
+    return { ok: false, message: MASTER_errorMessage_(err) };
+  }
+}
+
+/**
+ * Processes the next batch of queued items.
+ * @param {number=} batchSize - Max items to process (default 5).
+ * @returns {{processed:number,errors:number}} Result.
+ */
+function QUEUE_processNextBatch(batchSize) {
+  const size = Number(batchSize || 5);
+  const sheet = QUEUE_ensureSheet_();
+  const headers = QUEUE_headers_();
+  const statusCol = headers.indexOf("status") + 1; // 9
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow < 2) {
+    SpreadsheetApp.getActive().toast("No items in queue.", "Action Queue", 3);
+    return { processed: 0, errors: 0 };
+  }
+
+  const data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+
+  let processed = 0;
+  let errors = 0;
+
+  for (let i = 0; i < data.length && processed < size; i++) {
+    const row = data[i];
+    const status = row[8]; // status column (0-indexed)
+
+    if (status === "QUEUED" || status === "NEW") {
+      const rowNum = i + 2; // Adjust for header and 0-index
+      const result = QUEUE_processRow_(sheet, rowNum, row, headers);
+
+      if (result.ok) {
+        processed++;
+      } else {
+        errors++;
+      }
+    }
+  }
+
+  SpreadsheetApp.getActive().toast(
+    `Processed: ${processed}, Errors: ${errors}`,
+    "Action Queue",
+    4
+  );
+
+  return { processed: processed, errors: errors };
+}
+
+/**
+ * Processes a single queue row.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Queue sheet.
+ * @param {number} rowNum - Row number (1-indexed).
+ * @param {Array} row - Row data.
+ * @param {Array} headers - Header names.
+ * @returns {{ok:boolean,message?:string}} Result.
+ */
+function QUEUE_processRow_(sheet, rowNum, row, headers) {
+  const queueId = row[0];
+  const actionType = row[3];
+  const targetType = row[4];
+  const targetId = row[5];
+  const paramsJson = row[6];
+
+  // Update status to RUNNING
+  const startTime = new Date();
+  sheet.getRange(rowNum, 9).setValue("RUNNING");
+  sheet.getRange(rowNum, 13).setValue(startTime.toISOString());
+
+  const perf = MASTER_perfStart_();
+
+  try {
+    let params = {};
+    try {
+      params = paramsJson ? JSON.parse(paramsJson) : {};
+    } catch (e) {
+      params = {};
+    }
+
+    const result = QUEUE_dispatchAction_(actionType, targetType, targetId, params);
+
+    const endTime = new Date();
+    const duration = endTime.getTime() - startTime.getTime();
+
+    // Update row with result
+    sheet.getRange(rowNum, 9).setValue("DONE");
+    sheet.getRange(rowNum, 10).setValue(result.message || "Completed successfully");
+    sheet.getRange(rowNum, 11).setValue(result.resultLink || "");
+    sheet.getRange(rowNum, 12).setValue(result.resultId || "");
+    sheet.getRange(rowNum, 14).setValue(endTime.toISOString());
+    sheet.getRange(rowNum, 15).setValue(duration);
+
+    MASTER_logEvent_({
+      eventType: "queue",
+      action: "process_item",
+      status: "success",
+      durationMs: MASTER_perfEnd_(perf),
+      meta: { queueId: queueId, actionType: actionType }
+    });
+
+    return { ok: true };
+  } catch (err) {
+    const endTime = new Date();
+    const duration = endTime.getTime() - startTime.getTime();
+
+    sheet.getRange(rowNum, 9).setValue("ERROR");
+    sheet.getRange(rowNum, 10).setValue(MASTER_errorMessage_(err));
+    sheet.getRange(rowNum, 14).setValue(endTime.toISOString());
+    sheet.getRange(rowNum, 15).setValue(duration);
+
+    MASTER_logEvent_({
+      eventType: "queue",
+      action: "process_item",
+      status: "failure",
+      durationMs: MASTER_perfEnd_(perf),
+      error: err,
+      meta: { queueId: queueId, actionType: actionType }
+    });
+
+    return { ok: false, message: MASTER_errorMessage_(err) };
+  }
+}
+
+/**
+ * Dispatches an action to its handler.
+ * @param {string} actionType - Action type.
+ * @param {string} targetType - Target type.
+ * @param {string} targetId - Target identifier.
+ * @param {Object} params - Action parameters.
+ * @returns {{ok:boolean,message?:string,resultLink?:string,resultId?:string}} Result.
+ */
+function QUEUE_dispatchAction_(actionType, targetType, targetId, params) {
+  switch (actionType) {
+    case "OPEN_LINK":
+      const key = params.key || targetId;
+      MASTER_openLinkKey_(key, { from: "queue" });
+      return { ok: true, message: "Link opened: " + key };
+
+    case "CREATE_PROJECT_FOLDER":
+      const folderResult = MASTER_createProjectFolder();
+      return {
+        ok: folderResult.ok,
+        message: folderResult.ok ? "Folder created" : folderResult.message,
+        resultLink: folderResult.folderUrl,
+        resultId: folderResult.folderId
+      };
+
+    case "GENERATE_ENHANCEMENT":
+      const enhResult = MASTER_apiGenerateEnhancement({
+        title: params.title || targetId || "Queue Item",
+        source: params.source || "Action Queue",
+        workProductText: params.text || targetId,
+        callAi: params.callAi || false
+      });
+      return {
+        ok: enhResult.ok,
+        message: enhResult.ok ? "Enhancement generated" : enhResult.message,
+        resultId: enhResult.createdIso
+      };
+
+    case "OPEN_DASHBOARD":
+      MASTER_openDashboard();
+      return { ok: true, message: "Dashboard opened" };
+
+    case "SYNC_CONFIG":
+      BRIDGE_syncConfig_();
+      return { ok: true, message: "Config synced" };
+
+    case "RUN_ENHANCEMENT":
+      BRIDGE_runEnhancement_();
+      return { ok: true, message: "Enhancement run from Control Bridge" };
+
+    default:
+      return { ok: false, message: "Unknown action type: " + actionType };
+  }
+}
+
+/**
+ * Menu action: Process next batch of queue items.
+ */
+function QUEUE_menuProcessBatch() {
+  QUEUE_processNextBatch(5);
+}
+
+/**
+ * Ensures the Dashboard sheet exists (for template merge).
+ */
+function QUEUE_ensureDashboardSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName("Dashboard");
+  if (!sheet) {
+    sheet = ss.insertSheet("Dashboard");
+    QUEUE_buildDashboardSheet_(sheet);
+  }
+  return sheet;
+}
+
+/**
+ * Builds the Dashboard control panel sheet.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Dashboard sheet.
+ */
+function QUEUE_buildDashboardSheet_(sheet) {
+  const theme = MASTER_CONFIG.THEME;
+
+  // Set default background
+  sheet.getRange("A1:D20").setBackground(theme.BG).setFontColor(theme.TEXT);
+
+  // Header
+  sheet.getRange("A1:D1").merge()
+    .setValue("Dashboard Control Panel")
+    .setBackground(theme.CARD)
+    .setFontWeight("bold")
+    .setFontSize(14);
+
+  // Labels and inputs
+  const labels = [
+    ["A3", "Request ID (auto)", "B3", "=TEXT(NOW(),\"yyyymmdd-hhmmss\")"],
+    ["A4", "Action Type", "B4", ""],
+    ["A5", "Target Type", "B5", ""],
+    ["A6", "Target ID / Key", "B6", ""],
+    ["A7", "Params (JSON)", "B7", "{}"],
+    ["A8", "Priority", "B8", "NORMAL"],
+    ["A9", "Enqueue", "B9", false],
+    ["A11", "Status", "B11", "=IF(B9=TRUE,\"QUEUED\",\"(not queued)\")"],
+    ["A12", "Last Message", "B12", ""],
+  ];
+
+  labels.forEach(([labelAddr, labelText, valueAddr, value]) => {
+    sheet.getRange(labelAddr).setValue(labelText).setFontWeight("bold");
+    if (typeof value === "boolean") {
+      sheet.getRange(valueAddr).insertCheckboxes();
+    } else if (String(value).startsWith("=")) {
+      sheet.getRange(valueAddr).setFormula(value);
+    } else {
+      sheet.getRange(valueAddr).setValue(value);
+    }
+  });
+
+  // Input highlighting
+  ["B4", "B5", "B6", "B7", "B8"].forEach(addr => {
+    sheet.getRange(addr).setBackground("#1a2744");
+  });
+
+  // Data validation for dropdowns
+  const actionTypes = ["OPEN_LINK", "CREATE_PROJECT_FOLDER", "GENERATE_ENHANCEMENT", "OPEN_DASHBOARD", "SYNC_CONFIG", "RUN_ENHANCEMENT", "CUSTOM"];
+  const targetTypes = ["SPREADSHEET", "SHEET", "RANGE", "DOC", "GMAIL", "DRIVE", "SITE", "LINK_KEY", "TEXT", "FILE"];
+  const priorities = ["LOW", "NORMAL", "HIGH", "URGENT"];
+
+  const dvAction = SpreadsheetApp.newDataValidation()
+    .requireValueInList(actionTypes, true)
+    .setAllowInvalid(false)
+    .build();
+  sheet.getRange("B4").setDataValidation(dvAction);
+
+  const dvTarget = SpreadsheetApp.newDataValidation()
+    .requireValueInList(targetTypes, true)
+    .setAllowInvalid(false)
+    .build();
+  sheet.getRange("B5").setDataValidation(dvTarget);
+
+  const dvPriority = SpreadsheetApp.newDataValidation()
+    .requireValueInList(priorities, true)
+    .setAllowInvalid(false)
+    .build();
+  sheet.getRange("B8").setDataValidation(dvPriority);
+
+  // Column widths
+  sheet.setColumnWidth(1, 150);
+  sheet.setColumnWidth(2, 300);
+
+  // Help text
+  sheet.getRange("A14").setValue("How to use:");
+  sheet.getRange("A15").setValue("1. Select Action Type and Target Type");
+  sheet.getRange("A16").setValue("2. Enter Target ID and Params (JSON)");
+  sheet.getRange("A17").setValue("3. Check 'Enqueue' to add to queue");
+  sheet.getRange("A18").setValue("4. Run 'Process Queue' from menu");
+}
+
+/**
+ * Handles Dashboard enqueue checkbox via onEdit.
+ * @param {GoogleAppsScript.Events.SheetsOnEdit} e - Edit event.
+ */
+function QUEUE_handleDashboardEnqueue_(e) {
+  if (!e || !e.range) return;
+
+  const sheet = e.range.getSheet();
+  if (sheet.getName() !== "Dashboard") return;
+
+  const row = e.range.getRow();
+  const col = e.range.getColumn();
+  const value = e.range.getValue();
+
+  // B9 is the Enqueue checkbox
+  if (row === 9 && col === 2 && value === true) {
+    const actionType = sheet.getRange("B4").getValue();
+    const targetType = sheet.getRange("B5").getValue();
+    const targetId = sheet.getRange("B6").getValue();
+    const paramsJson = sheet.getRange("B7").getValue();
+    const priority = sheet.getRange("B8").getValue();
+
+    let params = {};
+    try {
+      params = paramsJson ? JSON.parse(paramsJson) : {};
+    } catch (err) {
+      params = { raw: paramsJson };
+    }
+
+    const result = QUEUE_enqueue({
+      actionType: actionType,
+      targetType: targetType,
+      targetId: targetId,
+      params: params,
+      priority: priority
+    });
+
+    if (result.ok) {
+      sheet.getRange("B11").setValue("QUEUED");
+      sheet.getRange("B12").setValue("Added: " + result.queueId);
+      SpreadsheetApp.getActive().toast("Enqueued: " + result.queueId, "Dashboard", 3);
+    } else {
+      sheet.getRange("B11").setValue("ERROR");
+      sheet.getRange("B12").setValue(result.message);
+    }
+
+    // Reset checkbox
+    e.range.setValue(false);
+  }
+}
+
+/**
+ * Opens all queue-related sheets.
+ */
+function QUEUE_openAllSheets() {
+  QUEUE_ensureSheet_();
+  QUEUE_ensureDashboardSheet_();
+  BRIDGE_ensureSheets_();
+  SpreadsheetApp.getActive().toast("All control sheets ready!", "Queue System", 3);
 }
