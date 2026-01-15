@@ -164,6 +164,8 @@ function MASTER_buildMenus_() {
 
   // Master menu
   const menu = ui.createMenu(`${MASTER_CONFIG.MENU_NAME} ${MASTER_CONFIG.MENU_EMOJI}`);
+  menu.addItem("🎛️ Control Bridge Dashboard", "BRIDGE_openSheet");
+  menu.addSeparator();
   menu.addItem("🏠 Open Sidebar (Quick Panel)", "MASTER_showSidebar");
   menu.addItem("🌐 Open Web App UI", "MASTER_openWebAppLink");
   menu.addSeparator();
@@ -743,9 +745,21 @@ function MASTER_ensureTriggers_() {
  * @param {GoogleAppsScript.Events.SheetsOnEdit} e - Edit event.
  */
 function MASTER_onEditHandler(e) {
+  // Route Control Bridge actions first
+  if (e && e.range) {
+    try {
+      BRIDGE_handleAction_(e);
+    } catch (bridgeErr) {
+      console.error("BRIDGE_handleAction_ error:", bridgeErr);
+    }
+  }
+
+  // Skip logging for Control Bridge and Config sheets to avoid noise
+  const sheetName = e && e.range ? e.range.getSheet().getName() : "";
+  if (sheetName === "_ControlBridge" || sheetName === "_Config") return;
+
   const perf = MASTER_perfStart_();
   try {
-    const sheetName = e && e.range ? e.range.getSheet().getName() : "";
     const a1 = e && e.range ? e.range.getA1Notation() : "";
     const oldValue = e && typeof e.oldValue !== "undefined" ? e.oldValue : "";
     const value = e && e.range ? e.range.getDisplayValue() : "";
@@ -2122,14 +2136,451 @@ function MASTER_toast(msg) {
   SpreadsheetApp.getActive().toast(msg);
 }
 
-/**
- * UI API: Get W/E/P/V data.
- * @returns {Array} Framework nodes.
- */
 function MASTER_apiGetFrameworkData() {
   // Ensure FrameworkData.js is loaded/included in project
   if (typeof MASTER_loadFrameworkData === 'function') {
     return MASTER_loadFrameworkData();
   }
   return [];
+}
+
+/** =======================================================================
+ *  16) CONTROL BRIDGE DASHBOARD (Sheets-Native UI)
+ *  ======================================================================= */
+
+/**
+ * Opens or creates the Control Bridge sheet.
+ */
+function BRIDGE_openSheet() {
+  BRIDGE_ensureSheets_();
+  const ss = SpreadsheetApp.getActive();
+  const bridge = ss.getSheetByName("_ControlBridge");
+  if (bridge) ss.setActiveSheet(bridge);
+}
+
+/**
+ * Handles checkbox actions from _ControlBridge sheet.
+ * Called by the installable onEdit trigger.
+ * @param {GoogleAppsScript.Events.SheetsOnEdit} e - Edit event.
+ */
+function BRIDGE_handleAction_(e) {
+  if (!e || !e.range) return;
+
+  const sheet = e.range.getSheet();
+  if (sheet.getName() !== "_ControlBridge") return;
+
+  const row = e.range.getRow();
+  const col = e.range.getColumn();
+  const value = e.range.getValue();
+
+  // Only react to checkboxes turning TRUE
+  if (value !== true) return;
+
+  // Action mappings (Row 8) - B8, D8, F8
+  const actions = {
+    "8,2": "runEnhancement",
+    "8,4": "createFolder",
+    "8,6": "syncConfig"
+  };
+
+  // Output actions (Row 46) - B46, D46
+  const outputActions = {
+    "46,2": "copyOutput",
+    "46,4": "saveToReports"
+  };
+
+  const key = `${row},${col}`;
+
+  if (actions[key]) {
+    BRIDGE_setStatus_("Working...");
+    try {
+      BRIDGE_dispatch_(actions[key]);
+      BRIDGE_setStatus_("Ready ✓");
+    } catch (err) {
+      BRIDGE_setStatus_("Error: " + err.message);
+      console.error("BRIDGE action error:", err);
+    }
+    // Reset checkbox
+    Utilities.sleep(200);
+    e.range.setValue(false);
+  }
+
+  if (outputActions[key]) {
+    try {
+      BRIDGE_dispatchOutput_(outputActions[key]);
+    } catch (err) {
+      console.error("BRIDGE output action error:", err);
+    }
+    e.range.setValue(false);
+  }
+}
+
+/**
+ * Dispatches to the appropriate action handler.
+ * @param {string} action - Action name.
+ */
+function BRIDGE_dispatch_(action) {
+  switch (action) {
+    case "runEnhancement":
+      BRIDGE_runEnhancement_();
+      break;
+    case "createFolder":
+      MASTER_createProjectFolder();
+      break;
+    case "syncConfig":
+      BRIDGE_syncConfig_();
+      break;
+  }
+  BRIDGE_updateLastAction_(action);
+}
+
+/**
+ * Dispatches output-related actions.
+ * @param {string} action - Action name.
+ */
+function BRIDGE_dispatchOutput_(action) {
+  const ss = SpreadsheetApp.getActive();
+  const bridge = ss.getSheetByName("_ControlBridge");
+
+  switch (action) {
+    case "copyOutput":
+      // Show a small dialog with the output for easy copying
+      const output = bridge.getRange("B24").getValue();
+      BRIDGE_showCopyDialog_(output);
+      break;
+    case "saveToReports":
+      SpreadsheetApp.getActive().toast("Output already saved to Enhancement Reports!", "Control Bridge", 3);
+      break;
+  }
+}
+
+/**
+ * Shows a dialog for copying output text.
+ * @param {string} text - Text to copy.
+ */
+function BRIDGE_showCopyDialog_(text) {
+  const html = HtmlService.createHtmlOutput(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: system-ui; margin: 12px; background: #0B1220; color: #E5E7EB; }
+        textarea { width: 100%; height: 300px; background: #111A2E; color: #E5E7EB; border: 1px solid #6D28D9; border-radius: 8px; padding: 10px; }
+        button { margin-top: 10px; padding: 10px 16px; background: #6D28D9; color: white; border: none; border-radius: 8px; cursor: pointer; }
+        button:hover { background: #5B21B6; }
+      </style>
+    </head>
+    <body>
+      <textarea id="txt">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+      <button onclick="copyText()">📋 Copy to Clipboard</button>
+      <button onclick="google.script.host.close()">Close</button>
+      <script>
+        function copyText() {
+          const txt = document.getElementById('txt');
+          txt.select();
+          document.execCommand('copy');
+          alert('Copied!');
+        }
+      </script>
+    </body>
+    </html>
+  `).setWidth(600).setHeight(420);
+
+  SpreadsheetApp.getUi().showModelessDialog(html, "📋 Copy Output");
+}
+
+/**
+ * Runs the Enhancement Studio from Control Bridge input.
+ */
+function BRIDGE_runEnhancement_() {
+  const ss = SpreadsheetApp.getActive();
+  const bridge = ss.getSheetByName("_ControlBridge");
+
+  const title = bridge.getRange("B11").getValue() || "Untitled";
+  const source = bridge.getRange("E11").getValue() || "Control Bridge";
+
+  // Get text from merged input zone
+  const inputRange = bridge.getRange("B13:G20");
+  const values = inputRange.getValues();
+  const text = values.map(row => row.join(" ")).join("\n").trim();
+
+  if (!text) {
+    bridge.getRange("B24").setValue("⚠️ No input text provided.\n\nPaste your work product in the Input Zone (cells B13:G20) and click the checkbox again.");
+    return;
+  }
+
+  const pack = MASTER_generateEnhancementPackage_({
+    workProductText: text,
+    title: title,
+    source: source,
+    mode: "control_bridge"
+  });
+
+  // Check if AI is enabled
+  const config = ss.getSheetByName("_Config");
+  const aiEnabled = config ? config.getRange("B6").getValue() === true : false;
+
+  if (aiEnabled) {
+    const ai = MASTER_tryCallAiEndpoint_({ prompt: pack.promptMarkdown, title: title });
+    pack.ai = ai;
+    pack.aiResponseMarkdown = ai && ai.ok ? String(ai.responseText || "") : "";
+  }
+
+  // Build output string
+  const outputParts = [
+    "═══════════════════════════════════════════════════════════════",
+    "🧠 ENHANCEMENT ANALYSIS: " + title,
+    "═══════════════════════════════════════════════════════════════",
+    "",
+    pack.analysisMarkdown,
+    "",
+    "═══════════════════════════════════════════════════════════════",
+    "📌 PROPOSALS",
+    "═══════════════════════════════════════════════════════════════",
+    "",
+    pack.proposalMarkdown
+  ];
+
+  if (aiEnabled && pack.aiResponseMarkdown) {
+    outputParts.push("");
+    outputParts.push("═══════════════════════════════════════════════════════════════");
+    outputParts.push("🤖 AI RESPONSE");
+    outputParts.push("═══════════════════════════════════════════════════════════════");
+    outputParts.push("");
+    outputParts.push(pack.aiResponseMarkdown);
+  }
+
+  const output = outputParts.join("\n");
+
+  // Write output to Output Zone
+  bridge.getRange("B24").setValue(output);
+
+  // Also save to Reports sheet
+  MASTER_appendEnhancementReportRow_(pack);
+
+  SpreadsheetApp.getActive().toast("✅ Enhancement complete! Check Output Zone.", "Control Bridge", 4);
+}
+
+/**
+ * Updates the status cell in _Config.
+ * @param {string} status - Status message.
+ */
+function BRIDGE_setStatus_(status) {
+  const ss = SpreadsheetApp.getActive();
+  const config = ss.getSheetByName("_Config");
+  if (config) {
+    config.getRange("B8").setValue(status);
+  }
+}
+
+/**
+ * Updates the last action timestamp.
+ * @param {string} action - Action name.
+ */
+function BRIDGE_updateLastAction_(action) {
+  const ss = SpreadsheetApp.getActive();
+  const config = ss.getSheetByName("_Config");
+  if (config) {
+    config.getRange("B7").setValue(new Date());
+  }
+}
+
+/**
+ * Syncs Config values to/from Document Properties.
+ */
+function BRIDGE_syncConfig_() {
+  const ss = SpreadsheetApp.getActive();
+  const config = ss.getSheetByName("_Config");
+  if (!config) return;
+
+  const props = PropertiesService.getDocumentProperties();
+
+  // Read from sheet, write to properties
+  const colab = config.getRange("B2").getValue();
+  const github = config.getRange("B3").getValue();
+  const webapp = config.getRange("B4").getValue();
+  const folder = config.getRange("B5").getValue();
+
+  if (colab) props.setProperty("MASTER_LINK_COLAB", String(colab));
+  if (github) props.setProperty("MASTER_LINK_GITHUB", String(github));
+  if (webapp) props.setProperty("MASTER_LINK_WEBAPP", String(webapp));
+  if (folder) props.setProperty("MASTER_LINK_PARENT_FOLDER", String(folder));
+
+  SpreadsheetApp.getActive().toast("✅ Config synced to Document Properties!", "Control Bridge", 3);
+}
+
+/**
+ * Ensures the Control Bridge sheets exist.
+ */
+function BRIDGE_ensureSheets_() {
+  const ss = SpreadsheetApp.getActive();
+
+  // _Config sheet
+  let config = ss.getSheetByName("_Config");
+  if (!config) {
+    config = ss.insertSheet("_Config");
+    BRIDGE_buildConfigSheet_(config);
+  }
+
+  // _ControlBridge sheet
+  let bridge = ss.getSheetByName("_ControlBridge");
+  if (!bridge) {
+    bridge = ss.insertSheet("_ControlBridge", 0);
+    BRIDGE_buildLayout_(bridge);
+  }
+}
+
+/**
+ * Builds the _Config sheet with default values.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Config sheet.
+ */
+function BRIDGE_buildConfigSheet_(sheet) {
+  const data = [
+    ["Key", "Value", "Description"],
+    ["CONFIG_VERSION", "1.0.0", "Control Bridge version"],
+    ["COLAB_URL", "", "🧪 Google Colab link"],
+    ["GITHUB_URL", "", "🐙 GitHub Repo link"],
+    ["WEBAPP_URL", "", "🚀 Web App link"],
+    ["PARENT_FOLDER_ID", "", "🗂️ Project folder ID"],
+    ["AI_ENABLED", false, "Enable AI endpoint calls"],
+    ["LAST_ACTION", "", "Last action timestamp"],
+    ["STATUS", "Ready", "Current system status"]
+  ];
+
+  sheet.getRange(1, 1, data.length, 3).setValues(data);
+
+  // Header formatting
+  sheet.getRange(1, 1, 1, 3)
+    .setBackground("#111A2E")
+    .setFontColor("#E5E7EB")
+    .setFontWeight("bold");
+
+  // Checkbox for AI_ENABLED
+  sheet.getRange("B7").insertCheckboxes();
+
+  // Column widths
+  sheet.setColumnWidth(1, 150);
+  sheet.setColumnWidth(2, 300);
+  sheet.setColumnWidth(3, 200);
+
+  // Apply theme
+  sheet.getRange(2, 1, 8, 3)
+    .setBackground("#0B1220")
+    .setFontColor("#E5E7EB");
+}
+
+/**
+ * Builds the Control Bridge layout with formatting.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Bridge sheet.
+ */
+function BRIDGE_buildLayout_(sheet) {
+  const theme = MASTER_CONFIG.THEME;
+
+  // Set default background
+  sheet.getRange("A1:H50").setBackground(theme.BG).setFontColor(theme.TEXT);
+
+  // ═══ HEADER (Row 1) ═══
+  sheet.getRange("A1:H1").merge()
+    .setValue("═══════════════ 🎛️ CONTROL BRIDGE v1.0 ═══════════════")
+    .setBackground(theme.CARD)
+    .setFontColor(theme.TEXT)
+    .setFontWeight("bold")
+    .setFontSize(14)
+    .setHorizontalAlignment("center");
+
+  // ═══ STATUS ROW (Row 2) ═══
+  sheet.getRange("A2").setValue("Status:");
+  sheet.getRange("B2").setFormula("=IF(_Config!B9=\"\",\"Ready\",_Config!B9)");
+  sheet.getRange("D2").setValue("Last Action:");
+  sheet.getRange("E2").setFormula("=IF(_Config!B8=\"\",\"None\",TEXT(_Config!B8,\"yyyy-mm-dd hh:mm\"))");
+
+  // ═══ QUICK LINKS HEADER (Row 4) ═══
+  sheet.getRange("A4:H4").merge()
+    .setValue("─────────────────────── ⚡ QUICK LINKS ───────────────────────")
+    .setBackground(theme.CARD)
+    .setFontColor(theme.MUTED);
+
+  // ═══ QUICK LINKS (Row 5) ═══
+  sheet.getRange("B5").setFormula('=IF(_Config!B3="","🧪 Colab (not set)",HYPERLINK(_Config!B3,"🧪 Colab"))');
+  sheet.getRange("C5").setFormula('=IF(_Config!B4="","🐙 GitHub (not set)",HYPERLINK(_Config!B4,"🐙 GitHub"))');
+  sheet.getRange("D5").setFormula('=IF(_Config!B5="","🚀 Web App (not set)",HYPERLINK(_Config!B5,"🚀 Web App"))');
+  sheet.getRange("E5").setValue("📊 Logs").setFontColor(theme.SECONDARY);
+  sheet.getRange("F5").setValue("⚙️ Config").setFontColor(theme.SECONDARY);
+
+  // ═══ ACTIONS HEADER (Row 7) ═══
+  sheet.getRange("A7:H7").merge()
+    .setValue("─────────────────────── 🎬 ACTIONS ────────────────────────")
+    .setBackground(theme.CARD)
+    .setFontColor(theme.MUTED);
+
+  // ═══ ACTION CHECKBOXES (Row 8) ═══
+  sheet.getRange("A8").setValue("▶️ Run Enhancement:");
+  sheet.getRange("B8").insertCheckboxes();
+  sheet.getRange("C8").setValue("🗂️ Create Folder:");
+  sheet.getRange("D8").insertCheckboxes();
+  sheet.getRange("E8").setValue("🔄 Sync Config:");
+  sheet.getRange("F8").insertCheckboxes();
+
+  // ═══ INPUT ZONE HEADER (Row 10) ═══
+  sheet.getRange("A10:H10").merge()
+    .setValue("─────────────────────── 📝 INPUT ZONE ───────────────────────")
+    .setBackground(theme.CARD)
+    .setFontColor(theme.MUTED);
+
+  // ═══ INPUT FIELDS (Row 11) ═══
+  sheet.getRange("A11").setValue("Title:");
+  sheet.getRange("B11").setValue("").setBackground("#1a2744");
+  sheet.getRange("D11").setValue("Source:");
+  sheet.getRange("E11").setValue("Control Bridge").setBackground("#1a2744");
+
+  // ═══ WORK PRODUCT LABEL (Row 12) ═══
+  sheet.getRange("A12").setValue("Work Product Text:");
+
+  // ═══ INPUT TEXT AREA (Rows 13-20, Cols B-G) ═══
+  sheet.getRange("B13:G20").merge()
+    .setValue("")
+    .setBackground("#1a2744")
+    .setBorder(true, true, true, true, false, false, theme.PRIMARY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM)
+    .setVerticalAlignment("top")
+    .setWrap(true);
+
+  // ═══ OUTPUT ZONE HEADER (Row 22) ═══
+  sheet.getRange("A22:H22").merge()
+    .setValue("─────────────────────── 📤 OUTPUT ZONE ──────────────────────")
+    .setBackground(theme.CARD)
+    .setFontColor(theme.MUTED);
+
+  // ═══ OUTPUT LABEL (Row 23) ═══
+  sheet.getRange("A23").setValue("Analysis Results:");
+
+  // ═══ OUTPUT TEXT AREA (Rows 24-45, Cols B-G) ═══
+  sheet.getRange("B24:G45").merge()
+    .setValue("(Output will appear here after running Enhancement)")
+    .setBackground("#0f1a2e")
+    .setBorder(true, true, true, true, false, false, theme.SECONDARY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM)
+    .setVerticalAlignment("top")
+    .setWrap(true)
+    .setFontColor(theme.MUTED);
+
+  // ═══ OUTPUT ACTIONS (Row 46) ═══
+  sheet.getRange("A46").setValue("📋 Copy Output:");
+  sheet.getRange("B46").insertCheckboxes();
+  sheet.getRange("C46").setValue("💾 Save to Reports:");
+  sheet.getRange("D46").insertCheckboxes();
+
+  // ═══ HELP ROW (Row 48) ═══
+  sheet.getRange("A48:H48").merge()
+    .setValue("💡 Tip: Paste your work product in the Input Zone, then click the '▶️ Run Enhancement' checkbox.")
+    .setFontColor(theme.MUTED)
+    .setFontStyle("italic");
+
+  // ═══ COLUMN WIDTHS ═══
+  sheet.setColumnWidth(1, 140);
+  sheet.setColumnWidths(2, 6, 100);
+  sheet.setColumnWidth(8, 50);
+
+  // ═══ ROW HEIGHTS ═══
+  sheet.setRowHeight(1, 30);
+  sheet.setRowHeights(13, 8, 25); // Input area rows
+  sheet.setRowHeights(24, 22, 20); // Output area rows
 }
