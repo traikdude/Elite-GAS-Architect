@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <title>AI Architect Chat</title>
+    <style>
+      :root{--bg:#0B1220;--card:#111A2E;--text:#E5E7EB;--muted:#9CA3AF;--primary:#6D28D9;--secondary:#06B6D4;--accent:#F59E0B;}
+      body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;height:100vh;display:flex;flex-direction:column}
+      
+      .header{padding:16px;border-bottom:1px solid rgba(255,255,255,.1);background:rgba(17,26,46,.95);display:flex;align-items:center;justify-content:space-between}
+      .title{font-weight:700;font-size:14px;color:var(--text);display:flex;align-items:center;gap:8px}
+      .logo{width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,var(--primary),var(--secondary));display:grid;place-items:center;font-size:12px}
+      
+      .chat-area{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:16px}
+      .msg{display:flex;gap:12px;max-width:90%}
+      .msg.user{align-self:flex-end;flex-direction:row-reverse}
+      .avatar{width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,.1);display:grid;place-items:center;font-size:12px;flex-shrink:0}
+      .msg.user .avatar{background:var(--primary)}
+      .bubble{background:rgba(255,255,255,.05);padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;border:1px solid rgba(255,255,255,.05)}
+      .msg.user .bubble{background:rgba(109,40,217,.2);border-color:rgba(109,40,217,.3)}
+      .msg.system .bubble{background:none;border:none;padding:0;color:var(--muted);font-size:12px;font-style:italic}
+      
+      .input-area{padding:16px;border-top:1px solid rgba(255,255,255,.1);background:var(--card)}
+      .input-box{display:flex;gap:10px}
+      textarea{flex:1;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px;color:var(--text);outline:none;resize:none;height:40px;font-family:inherit}
+      textarea:focus{border-color:var(--primary)}
+      button{background:var(--primary);color:white;border:none;border-radius:8px;padding:0 12px;cursor:pointer;font-weight:600;transition:opacity .2s}
+      button:hover{opacity:0.9}
+      button:disabled{opacity:0.5;cursor:not-allowed}
+      
+      pre{background:rgba(0,0,0,.3);padding:8px;border-radius:6px;overflow-x:auto;font-family:monospace;font-size:12px;margin:8px 0}
+      code{font-family:monospace;background:rgba(255,255,255,.1);padding:2px 4px;border-radius:4px}
+      
+      .typing-indicator{display:flex;gap:4px;padding:4px 8px}
+      .dot{width:6px;height:6px;background:var(--muted);border-radius:50%;animation:bounce 1.4s infinite ease-in-out both}
+      .dot:nth-child(1){animation-delay:-0.32s}
+      .dot:nth-child(2){animation-delay:-0.16s}
+      @keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="title">
+        <div class="logo">💬</div>
+        <span>AI Architect Chat</span>
+      </div>
+      <button onclick="clearChat()" style="background:transparent;color:var(--muted);font-size:11px;border:1px solid rgba(255,255,255,.1)">Clear</button>
+    </div>
+    
+    <div class="chat-area" id="chat">
+      <div class="msg system">
+        <div class="bubble">System initialized. Connected to Elite Architect Protocols.</div>
+      </div>
+    </div>
+    
+    <div class="input-area">
+      <div class="input-box">
+        <textarea id="prompt" placeholder="Ask the Architect..." onkeydown="checkSubmit(event)"></textarea>
+        <button id="sendBtn" onclick="send()">Send</button>
+      </div>
+    </div>
+
+    <script>
+      function checkSubmit(e) {
+        if(e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          send();
+        }
+      }
+
+      function appendMsg(role, text) {
+        const chat = document.getElementById('chat');
+        const div = document.createElement('div');
+        div.className = 'msg ' + role;
+        div.innerHTML = `
+          <div class="avatar">${role === 'user' ? '👤' : '🤖'}</div>
+          <div class="bubble">${formatText(text)}</div>
+        `;
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+        return div; // Return for potential update
+      }
+
+      function showTyping() {
+        const chat = document.getElementById('chat');
+        const div = document.createElement('div');
+        div.id = 'typing';
+        div.className = 'msg model';
+        div.innerHTML = `
+          <div class="avatar">🤖</div>
+          <div class="bubble">
+            <div class="typing-indicator">
+              <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+            </div>
+          </div>
+        `;
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+      }
+
+      function removeTyping() {
+        const el = document.getElementById('typing');
+        if(el) el.remove();
+      }
+
+      function formatText(text) {
+        // Basic markdown formatting
+        let html = text
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+          .replace(/`([^`]+)`/g, '<code>$1</code>')
+          .replace(/\n/g, '<br>');
+        return html;
+      }
+
+      function send() {
+        const input = document.getElementById('prompt');
+        const text = input.value.trim();
+        if(!text) return;
+        
+        appendMsg('user', text);
+        input.value = '';
+        input.disabled = true;
+        document.getElementById('sendBtn').disabled = true;
+        showTyping();
+
+        google.script.run
+          .withSuccessHandler(function(res) {
+            removeTyping();
+            input.disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+            input.focus();
+            
+            if (res && res.ok) {
+              appendMsg('model', res.responseText || "(No response generated)");
+            } else {
+              appendMsg('system', "Error: " + (res && res.message ? res.message : "Active connection failure"));
+            }
+          })
+          .withFailureHandler(function(err) {
+            removeTyping();
+            input.disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+            appendMsg('system', "Transmission Error: " + err.message);
+          })
+          .MASTER_tryCallAiEndpoint_({ prompt: text, title: "Chat Session" });
+      }
+
+      function clearChat() {
+        document.getElementById('chat').innerHTML = '<div class="msg system"><div class="bubble">Memory cleared.</div></div>';
+      }
+    </script>
+  </body>
+</html>

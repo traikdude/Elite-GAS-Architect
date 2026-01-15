@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <title>Troubleshooter Wizard</title>
+    <style>
+        :root {
+            --bg: #0B1220;
+            --card: #111A2E;
+            --text: #E5E7EB;
+            --muted: #9CA3AF;
+            --primary: #6D28D9;
+            --secondary: #06B6D4;
+            --success: #22C55E;
+        }
+
+        body {
+            margin: 0;
+            padding: 16px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            margin-bottom: 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, .1);
+            padding-bottom: 12px;
+        }
+
+        h1 {
+            font-size: 18px;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid rgba(255, 255, 255, .1);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, .2);
+            animation: slideIn .3s ease-out;
+        }
+
+        .question {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            line-height: 1.4;
+        }
+
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        button {
+            background: rgba(255, 255, 255, .05);
+            border: 1px solid rgba(255, 255, 255, .1);
+            color: var(--text);
+            padding: 12px 16px;
+            text-align: left;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all .2s;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, .1);
+            border-color: var(--primary);
+            transform: translateX(4px);
+        }
+
+        .solution {
+            background: rgba(34, 197, 94, .1);
+            border: 1px solid var(--success);
+            padding: 16px;
+            border-radius: 8px;
+            color: #dcfce7;
+        }
+
+        .solution-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: bold;
+            color: var(--success);
+            margin-bottom: 8px;
+        }
+
+        .history {
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .crumb {
+            font-size: 12px;
+            color: var(--muted);
+            background: rgba(255, 255, 255, .05);
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .crumb:hover {
+            color: var(--text);
+        }
+
+        .crumb:last-child {
+            color: var(--primary);
+            background: rgba(109, 40, 217, .2);
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        .reset-btn {
+            margin-top: 24px;
+            width: 100%;
+            padding: 12px;
+            background: transparent;
+            border: 1px dashed rgba(255, 255, 255, .2);
+            color: var(--muted);
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .reset-btn:hover {
+            border-color: var(--muted);
+            color: var(--text);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 Troubleshooter Wizard</h1>
+            <div class="subtitle">Diagnose your script issues with the Elite Framework</div>
+        </div>
+
+        <div id="history" class="history"></div>
+        <div id="mount"></div>
+
+        <button class="reset-btn" onclick="reset()">↻ Start Over</button>
+    </div>
+
+    <script>
+        // Ported from React App constants.ts
+        const STEPS = [
+            {
+                id: 'start',
+                question: "What type of issue are you experiencing?",
+                options: [
+                    { label: "Authorization / Permissions", next: 'auth' },
+                    { label: "Script Failure / Crash", next: 'crash' },
+                    { label: "Unexpected Output", next: 'logic' }
+                ]
+            },
+            {
+                id: 'auth',
+                question: "Are you getting a 'permission denied' or 'authorization required' error?",
+                options: [
+                    { label: "Yes, specifically 'Service invoked too many times'", next: 'quota' },
+                    { label: "Yes, general permission error", next: 'auth_check' },
+                    { label: "No, it's something else", next: 'general_check' }
+                ]
+            },
+            {
+                id: 'crash',
+                question: "Does the Execution Log show a red error message?",
+                options: [
+                    { label: "Yes, 'Cannot find method...'", next: 'syntax' },
+                    { label: "Yes, 'Exceeded maximum execution time'", next: 'timeout' },
+                    { label: "No, it just stops silently", next: 'silent' }
+                ]
+            },
+            { id: 'quota', solution: "Action: You hit a Google quota. Implement Batch Processing (S31) or CacheService (S32). Wait 24 hours if it's a daily email quota." },
+            { id: 'auth_check', solution: "Action: Go to Run -> Run Function -> [Select Function]. Review Permissions. Ensure your appsscript.json manifest includes all necessary OAuth scopes." },
+            { id: 'syntax', solution: "Action: Check your object types. You might be trying to call a Sheet method on a Range object. Consult the Reference (G11)." },
+            { id: 'timeout', solution: "Action: Apps Script has a 6 min (consumer) or 30 min (workspace) limit. Break your script into chunks using Trigger chaining (T24) or optimize loops (S313)." },
+            { id: 'logic', solution: "Action: Use Logger.log() at key checkpoints. Verify your loop indices and array logic. Remember Apps Script arrays are 0-indexed, but Sheets Rows are 1-indexed." },
+            { id: 'silent', solution: "Action: Check your trigger setup. Simple triggers (onEdit) fail silently if they encounter permissions issues. Switch to an Installable Trigger (T2)." },
+            { id: 'general_check', solution: "Run the Diagnostic Function: create a minimal reproduction case. Check Stackdriver Logging." }
+        ];
+
+        let historyStack = [];
+
+        function render(stepId) {
+            const step = STEPS.find(s => s.id === stepId);
+            if (!step) return;
+
+            const mount = document.getElementById('mount');
+
+            // Update History
+            updateHistory();
+
+            if (step.solution) {
+                mount.innerHTML = `
+            <div class="card">
+              <div class="solution">
+                <div class="solution-header">✅ Proposed Solution</div>
+                ${step.solution}
+              </div>
+            </div>
+          `;
+            } else {
+                let html = `
+            <div class="card">
+              <div class="question">${step.question}</div>
+              <div class="options">
+          `;
+                step.options.forEach(opt => {
+                    html += `<button onclick="next('${opt.next}', '${escapeHtml(opt.label)}')">${opt.label}</button>`;
+                });
+                html += `</div></div>`;
+                mount.innerHTML = html;
+            }
+        }
+
+        function next(nextId, label) {
+            historyStack.push({ id: nextId, label: label });
+            // Use a small timeout for animation feel
+            render(nextId);
+        }
+
+        function reset() {
+            historyStack = [{ id: 'start', label: 'Start' }];
+            render('start');
+        }
+
+        function updateHistory() {
+            const h = document.getElementById('history');
+            h.innerHTML = historyStack.map((item, idx) =>
+                `<span class="crumb" onclick="jump(${idx})">${item.label}</span>`
+            ).join(' › ');
+        }
+
+        function jump(idx) {
+            // Go back to that state
+            const target = historyStack[idx];
+            historyStack = historyStack.slice(0, idx + 1);
+            render(target.id);
+        }
+
+        function escapeHtml(s) {
+            return s.replace(/'/g, "&#39;");
+        }
+
+        // Init
+        reset();
+    </script>
+</body>
+
+</html>

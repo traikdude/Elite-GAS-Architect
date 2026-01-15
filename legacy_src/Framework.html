@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <title>Strategic Framework</title>
+    <style>
+        :root {
+            --bg: #0B1220;
+            --card: #111A2E;
+            --text: #E5E7EB;
+            --muted: #9CA3AF;
+            --primary: #6D28D9;
+            --secondary: #06B6D4;
+        }
+
+        body {
+            margin: 0;
+            padding: 16px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: monospace;
+        }
+
+        .node {
+            margin-left: 12px;
+            padding: 4px 0;
+        }
+
+        .code {
+            color: var(--secondary);
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .title {
+            color: var(--text);
+        }
+
+        .code:hover {
+            text-decoration: underline;
+            color: white;
+        }
+
+        .toggle {
+            color: var(--muted);
+            cursor: pointer;
+            margin-right: 4px;
+            display: inline-block;
+            width: 12px;
+        }
+
+        .header {
+            margin-bottom: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, .1);
+            padding-bottom: 12px;
+        }
+
+        h1 {
+            font-family: system-ui;
+            margin: 0;
+            font-size: 16px;
+        }
+
+        .desc {
+            font-family: system-ui;
+            color: var(--muted);
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>🧬 Strategic Framework v1.0</h1>
+        <div class="desc">Work Product Enhancement System (W/E/P/V)</div>
+    </div>
+    <div id="mount">Loading...</div>
+
+    <script>
+        function renderTree(nodes, container) {
+            if (!nodes || !nodes.length) return;
+            const ul = document.createElement('div');
+            nodes.forEach(node => {
+                const item = document.createElement('div');
+                item.className = 'node';
+
+                // Toggle
+                const hasKids = node.children && node.children.length > 0;
+                const toggle = document.createElement('span');
+                toggle.className = 'toggle';
+                toggle.textContent = hasKids ? '▼' : '•';
+
+                item.appendChild(toggle);
+
+                // Content
+                const span = document.createElement('span');
+                span.innerHTML = `<span class="code" onclick="copy('${node.code}')">${node.code}</span> <span class="title">${node.title}</span>`;
+                item.appendChild(span);
+
+                // Children container
+                if (hasKids) {
+                    const kidsContainer = document.createElement('div');
+                    kidsContainer.style.display = 'block'; // Open by default
+                    toggle.onclick = () => {
+                        const isHidden = kidsContainer.style.display === 'none';
+                        kidsContainer.style.display = isHidden ? 'block' : 'none';
+                        toggle.textContent = isHidden ? '▼' : '▶';
+                    };
+                    renderTree(node.children, kidsContainer);
+                    item.appendChild(kidsContainer);
+                }
+
+                ul.appendChild(item);
+            });
+            container.appendChild(ul);
+        }
+
+        function copy(text) {
+            // Try clipboard
+            navigator.clipboard.writeText(text).then(() => {
+                google.script.run.MASTER_toast("Copied code: " + text);
+            }).catch(() => {
+                // Fallback if permission context issues in sidebar
+                google.script.run.MASTER_toast("Code: " + text);
+            });
+        }
+
+        // Load data
+        google.script.run
+            .withSuccessHandler(data => {
+                const m = document.getElementById('mount');
+                m.innerHTML = '';
+                renderTree(data, m);
+            })
+            .MASTER_apiGetFrameworkData();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Master Automation Suite</title>
+    <style>
+      :root{
+        --bg:#0B1220;
+        --card:#111A2E;
+        --text:#E5E7EB;
+        --muted:#9CA3AF;
+        --primary:#6D28D9;
+        --secondary:#06B6D4;
+        --accent:#F59E0B;
+        --success:#22C55E;
+        --warning:#F59E0B;
+        --danger:#EF4444;
+      }
+      *{box-sizing:border-box}
+      body{
+        margin:0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+        background: radial-gradient(1200px 800px at 10% 0%, rgba(109,40,217,.35), transparent 55%),
+                    radial-gradient(900px 600px at 90% 15%, rgba(6,182,212,.25), transparent 55%),
+                    radial-gradient(1000px 700px at 50% 100%, rgba(245,158,11,.18), transparent 60%),
+                    var(--bg);
+        color:var(--text);
+        min-height:100vh;
+      }
+      .wrap{padding:16px; max-width: 1100px; margin: 0 auto;}
+      .topbar{
+        display:flex; align-items:center; justify-content:space-between; gap:12px;
+        background: linear-gradient(180deg, rgba(17,26,46,.95), rgba(17,26,46,.75));
+        border:1px solid rgba(255,255,255,.08);
+        padding:14px 14px;
+        border-radius:18px;
+        box-shadow: 0 14px 40px rgba(0,0,0,.35);
+        backdrop-filter: blur(10px);
+        position: sticky;
+        top: 10px;
+        z-index: 5;
+      }
+      .brand{display:flex; align-items:center; gap:10px;}
+      .logo{
+        width:44px; height:44px; border-radius:14px;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        display:grid; place-items:center;
+        box-shadow: 0 10px 25px rgba(0,0,0,.35);
+        transform: translateZ(0);
+        animation: popIn .6s ease both;
+      }
+      .brand h1{font-size:16px; margin:0; line-height:1.1;}
+      .brand p{margin:0; color:var(--muted); font-size:12px;}
+      .pill{
+        display:flex; align-items:center; gap:8px;
+        padding:10px 12px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,.10);
+        background: rgba(17,26,46,.60);
+        color:var(--text);
+        font-size:12px;
+      }
+      .grid{display:grid; grid-template-columns: repeat(12, 1fr); gap:14px; margin-top:14px;}
+      .card{
+        grid-column: span 12;
+        background: linear-gradient(180deg, rgba(17,26,46,.92), rgba(17,26,46,.75));
+        border:1px solid rgba(255,255,255,.08);
+        border-radius:18px;
+        padding:14px;
+        box-shadow: 0 14px 40px rgba(0,0,0,.30);
+        transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+      }
+      .card:hover{
+        transform: translateY(-2px);
+        border-color: rgba(255,255,255,.16);
+        box-shadow: 0 18px 48px rgba(0,0,0,.36);
+      }
+      .card h2{margin:0 0 8px 0; font-size:14px;}
+      .muted{color:var(--muted); font-size:12px; line-height:1.4;}
+      .btnrow{display:flex; flex-wrap:wrap; gap:10px; margin-top:10px;}
+      button, .btn{
+        appearance:none; border:none; cursor:pointer;
+        padding:10px 12px; border-radius:14px;
+        background: rgba(255,255,255,.08);
+        border:1px solid rgba(255,255,255,.10);
+        color: var(--text);
+        font-weight:600;
+        transition: transform .12s ease, background .12s ease, border-color .12s ease;
+        display:inline-flex; align-items:center; gap:8px;
+      }
+      button:hover, .btn:hover{transform: translateY(-1px); background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.16);}
+      button:active, .btn:active{transform: translateY(0px) scale(.99);}
+      .primary{
+        background: linear-gradient(135deg, var(--primary), rgba(109,40,217,.65));
+        border-color: rgba(255,255,255,.12);
+      }
+      .secondary{
+        background: linear-gradient(135deg, var(--secondary), rgba(6,182,212,.55));
+        border-color: rgba(255,255,255,.12);
+      }
+      .danger{
+        background: linear-gradient(135deg, var(--danger), rgba(239,68,68,.55));
+        border-color: rgba(255,255,255,.12);
+      }
+      .accent{
+        background: linear-gradient(135deg, var(--accent), rgba(245,158,11,.55));
+        border-color: rgba(255,255,255,.12);
+        color: #0B1220;
+      }
+      .split{display:grid; grid-template-columns: 1fr; gap:14px;}
+      @media (min-width: 900px){ .split{grid-template-columns: 1.2fr .8fr;} }
+      .field{display:flex; flex-direction:column; gap:6px; margin-top:10px;}
+      label{font-size:12px; color:var(--muted)}
+      input, textarea, select{
+        padding:10px 12px;
+        border-radius:14px;
+        background: rgba(255,255,255,.06);
+        border:1px solid rgba(255,255,255,.12);
+        color: var(--text);
+        outline:none;
+        width:100%;
+      }
+      textarea{min-height:180px; resize:vertical; line-height:1.35}
+      input:focus, textarea:focus, select:focus{border-color: rgba(109,40,217,.65); box-shadow: 0 0 0 3px rgba(109,40,217,.18);}
+      .toast{
+        position: fixed; left: 16px; bottom: 16px;
+        background: rgba(17,26,46,.95);
+        border:1px solid rgba(255,255,255,.12);
+        padding:10px 12px;
+        border-radius: 14px;
+        box-shadow: 0 14px 40px rgba(0,0,0,.35);
+        opacity: 0;
+        transform: translateY(8px);
+        transition: opacity .18s ease, transform .18s ease;
+        font-size: 12px;
+        max-width: 520px;
+        z-index: 10;
+        pointer-events:none;
+      }
+      .toast.show{opacity:1; transform: translateY(0);}
+      .kbd{
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 11px;
+        background: rgba(255,255,255,.08);
+        padding: 2px 6px;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,.12);
+      }
+      table{
+        width:100%;
+        border-collapse: collapse;
+        overflow:hidden;
+        border-radius: 16px;
+        border: 1px solid rgba(255,255,255,.10);
+        margin-top: 10px;
+        background: rgba(0,0,0,.10);
+      }
+      th, td{
+        padding: 10px 10px;
+        font-size: 12px;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+        vertical-align: top;
+      }
+      th{color: var(--muted); text-align:left; font-weight: 700;}
+      tr:hover td{background: rgba(255,255,255,.04);}
+      .tag{
+        display:inline-flex; align-items:center; gap:6px;
+        padding:6px 10px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,.12);
+        background: rgba(255,255,255,.06);
+        font-size:12px;
+        color: var(--text);
+      }
+      .hr{height:1px;background:rgba(255,255,255,.10);margin:12px 0}
+      .ok{color:var(--success);font-weight:800}
+      .warn{color:var(--warning);font-weight:800}
+      .bad{color:var(--danger);font-weight:800}
+      @keyframes popIn{ from{transform: scale(.92); opacity: 0} to{transform: scale(1); opacity: 1} }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="topbar">
+        <div class="brand">
+          <div class="logo">✨</div>
+          <div>
+            <h1 id="brandTitle">Master Automation Suite ✨</h1>
+            <p id="surfaceLine">UI</p>
+          </div>
+        </div>
+        <div class="pill">
+          <span>🔊 Sound</span>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input id="soundToggle" type="checkbox" style="width:18px;height:18px;cursor:pointer;">
+            <span class="muted">Optional</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="toast" class="toast"></div>
+
+      <div class="grid">
+        <div class="card">
+          <h2>🧭 Quick Navigation</h2>
+          <div class="muted">Open your key destinations instantly (links are configurable) 🔗</div>
+          <div class="btnrow">
+            <button class="primary" onclick="openLink('COLAB')">🧪 Colab</button>
+            <button class="secondary" onclick="openLink('GITHUB')">🐙 GitHub</button>
+            <button class="accent" onclick="openLink('WEBAPP')">🚀 Web App</button>
+            <button onclick="openDashboard()">📊 Dashboard</button>
+            <button onclick="showLinks()">🔗 Link Manager</button>
+            <button onclick="showEnhancement()">🧠 Enhancement Studio</button>
+          </div>
+        </div>
+
+        <div id="surfaceMount" class="card"></div>
+      </div>
+    </div>
+
+    <script>
+      const APP = JSON.parse('<?= APP_BOOTSTRAP_JSON ?>');
+
+      function setTheme(t){
+        if(!t) return;
+        const r = document.documentElement.style;
+        r.setProperty("--bg", t.BG || "#0B1220");
+        r.setProperty("--card", t.CARD || "#111A2E");
+        r.setProperty("--text", t.TEXT || "#E5E7EB");
+        r.setProperty("--muted", t.MUTED || "#9CA3AF");
+        r.setProperty("--primary", t.PRIMARY || "#6D28D9");
+        r.setProperty("--secondary", t.SECONDARY || "#06B6D4");
+        r.setProperty("--accent", t.ACCENT || "#F59E0B");
+        r.setProperty("--success", t.SUCCESS || "#22C55E");
+        r.setProperty("--warning", t.WARNING || "#F59E0B");
+        r.setProperty("--danger", t.DANGER || "#EF4444");
+      }
+
+      function toast(msg, mood){
+        const el = document.getElementById('toast');
+        el.textContent = (mood ? mood + " " : "") + msg;
+        el.classList.add('show');
+        setTimeout(()=>el.classList.remove('show'), 2400);
+      }
+
+      function sound(){
+        const on = document.getElementById('soundToggle')?.checked;
+        if(!on) return;
+        try{
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = "sine";
+          o.frequency.value = 660;
+          g.gain.value = 0.04;
+          o.connect(g); g.connect(ctx.destination);
+          o.start();
+          setTimeout(()=>{ o.stop(); ctx.close(); }, 90);
+        }catch(e){}
+      }
+
+      function escapeHtml(s){
+        return String(s ?? "")
+          .replaceAll("&","&amp;")
+          .replaceAll("<","&lt;")
+          .replaceAll(">","&gt;")
+          .replaceAll('"','&quot;')
+          .replaceAll("'","&#39;");
+      }
+
+      function mount(html){
+        document.getElementById("surfaceMount").innerHTML = html;
+      }
+
+      function openLink(key){
+        sound();
+        google.script.run
+          .withSuccessHandler(function(){ toast("Launching " + key + " ⚡", "🚀"); })
+          .withFailureHandler(function(err){ toast("Failed: " + (err && err.message ? err.message : err), "💥"); })
+          .MASTER_apiOpenLinkKey(key);
+      }
+
+      function openDashboard(){
+        sound();
+        google.script.run.MASTER_openDashboard();
+        toast("Opening dashboard 📊", "🧾");
+      }
+
+      function showLinks(){
+        sound();
+        google.script.run.MASTER_showLinkManagerDialog();
+        toast("Opening Link Manager 🔗", "🧠");
+      }
+
+      function showEnhancement(){
+        sound();
+        google.script.run.MASTER_showEnhancementSidebar();
+        toast("Opening Enhancement Studio 🧠", "✨");
+      }
+
+      // ---- SURFACES ----
+      function surface_about(){
+        mount(`
+          <h2>💡 About</h2>
+          <div class="muted">
+            This suite provides:
+            <ul>
+              <li>📊 Master Dashboard logging</li>
+              <li>🔗 Link opening with copyable URL dialog (opens in new tab)</li>
+              <li>🗂️ Folder Manager</li>
+              <li>🧠 Enhancement Studio (8-lens analysis + proposals + LLM-ready prompt)</li>
+            </ul>
+            Deploy as a Web App for a shareable control hub: <span class="kbd">Deploy → New deployment → Web app</span>.
+          </div>
+          <div class="btnrow">
+            <button onclick="openDashboard()">📊 Open Dashboard</button>
+            <button class="secondary" onclick="showLinks()">🔗 Configure Links</button>
+          </div>
+        `);
+      }
+
+      function surface_links(){
+        mount(`
+          <h2>🔗 Link Manager</h2>
+          <div class="muted">Set your project links once, then menu items will launch them instantly ⚡</div>
+          <div class="split" style="margin-top:10px;">
+            <div>
+              ${linkField("COLAB","🧪 Google Colab URL")}
+              ${linkField("GITHUB","🐙 GitHub Repo URL")}
+              ${linkField("WEBAPP","🚀 Deployed Web App URL")}
+              ${linkField("PARENT_FOLDER","🗂️ Drive Parent Folder ID")}
+              <div class="btnrow" style="margin-top:12px;">
+                <button class="danger" onclick="resetLinks()">🧼 Reset All Links</button>
+              </div>
+            </div>
+            <div>
+              <div class="tag">✨ Tips</div>
+              <div class="muted" style="margin-top:10px;">
+                • <b>PARENT_FOLDER</b> expects a Drive folder ID (not a full URL).<br>
+                • Web App URL appears after you deploy 🚀<br>
+                • Link openings use a modeless helper to open in a new tab and also show copy controls.
+              </div>
+              <div class="hr"></div>
+              <div class="muted">
+                If popups are blocked, allow popups for Google Sheets/Docs domain.
+              </div>
+            </div>
+          </div>
+        `);
+        loadLinks();
+      }
+
+      function linkField(key,label){
+        return `
+          <div class="field">
+            <label>${escapeHtml(label)}</label>
+            <input id="link_${escapeHtml(key)}" placeholder="Paste here…" />
+            <div class="btnrow">
+              <button class="primary" onclick="saveLink('${escapeHtml(key)}')">💾 Save ${escapeHtml(key)}</button>
+              <button onclick="openLink('${escapeHtml(key)}')">🔗 Test Open</button>
+            </div>
+          </div>
+        `;
+      }
+
+      function loadLinks(){
+        google.script.run
+          .withSuccessHandler(function(res){
+            if(!res || !res.ok) return;
+            const links = res.links || {};
+            Object.keys(links).forEach(function(k){
+              const input = document.getElementById("link_" + k);
+              if(input) input.value = links[k] || "";
+            });
+            toast("Links loaded ✅", "📦");
+          })
+          .withFailureHandler(function(){ toast("Could not load links 💥", "🚨"); })
+          .MASTER_apiGetLinks();
+      }
+
+      function saveLink(key){
+        sound();
+        const input = document.getElementById("link_" + key);
+        const url = input ? input.value : "";
+        google.script.run
+          .withSuccessHandler(function(res){
+            if(res && res.ok) toast("Saved " + key + " ✅", "🔗");
+            else toast("Save failed: " + (res && res.message ? res.message : "Unknown"), "🚨");
+          })
+          .withFailureHandler(function(){ toast("Save failed 💥", "🚨"); })
+          .MASTER_apiSetLink({ key: key, url: url });
+      }
+
+      function resetLinks(){
+        sound();
+        google.script.run
+          .withSuccessHandler(function(){ toast("Links reset 🔄", "🧼"); setTimeout(loadLinks, 300); })
+          .withFailureHandler(function(){ toast("Reset failed 💥", "🚨"); })
+          .MASTER_resetLinks();
+      }
+
+      function surface_folders(){
+        mount(`
+          <h2>🗂️ Folder Manager</h2>
+          <div class="muted">Create a Drive folder structure for this spreadsheet project 📁✨</div>
+          <div class="btnrow">
+            <button class="primary" onclick="createProjectFolder()">➕ Create Project Folder</button>
+            <button onclick="openLink('PARENT_FOLDER')">🔗 Open Parent Folder</button>
+            <button class="secondary" onclick="showLinks()">🔗 Set Parent Folder ID</button>
+          </div>
+          <div id="folderInfo" class="card" style="margin-top:14px;"></div>
+        `);
+        refreshFolderInfo();
+      }
+
+      function createProjectFolder(){
+        sound();
+        google.script.run
+          .withSuccessHandler(function(res){
+            if(res && res.ok){
+              toast("Folder created ✅", "🗂️");
+              if(res.folderUrl){
+                google.script.run.MASTER_apiOpenUrl({ url: res.folderUrl, title: "🗂️ Project Folder" });
+              }
+              setTimeout(refreshFolderInfo, 350);
+            } else {
+              toast("Create failed: " + (res && res.message ? res.message : "Unknown"), "🚨");
+            }
+          })
+          .withFailureHandler(function(){ toast("Create failed 💥", "🚨"); })
+          .MASTER_apiCreateProjectFolder();
+      }
+
+      function refreshFolderInfo(){
+        google.script.run
+          .withSuccessHandler(function(res){
+            const box = document.getElementById("folderInfo");
+            if(!box) return;
+            if(res && res.ok){
+              box.innerHTML =
+                '<div class="tag">🗂️ ' + escapeHtml(res.folderName) + '</div>' +
+                '<div class="muted" style="margin-top:8px;">Folder ID: <span class="kbd">' + escapeHtml(res.folderId) + '</span></div>' +
+                '<div class="btnrow" style="margin-top:10px;">' +
+                  '<button class="secondary" onclick="openUrl(\'' + escapeHtml(res.folderUrl) + '\',\'🗂️ Project Folder\')">🔗 Open Folder</button>'
+                '</div>';
+            }else{
+              box.innerHTML = '<div class="muted">No project folder yet. Create one above ✨</div>';
+            }
+          })
+          .MASTER_apiGetProjectFolderInfo();
+      }
+
+      function openUrl(url,title){
+        sound();
+        google.script.run.MASTER_apiOpenUrl({ url: url, title: title || "Open Link" });
+      }
+
+      function surface_logs(){
+        mount(`
+          <h2>🧾 Recent Logs</h2>
+          <div class="muted">Quick preview. Full detail lives in the “Master Dashboard” sheet 📊</div>
+          <div class="btnrow">
+            <button onclick="loadRecentLogs()">🔄 Refresh</button>
+            <button onclick="openDashboard()">📊 Open Dashboard</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>timestamp</th>
+                <th>type</th>
+                <th>action</th>
+                <th>user</th>
+                <th>status</th>
+                <th>meta</th>
+              </tr>
+            </thead>
+            <tbody id="logsTbody">
+              <tr><td colspan="6" class="muted">Loading…</td></tr>
+            </tbody>
+          </table>
+        `);
+        loadRecentLogs();
+      }
+
+      function loadRecentLogs(){
+        const tbody = document.getElementById("logsTbody");
+        if(!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading…</td></tr>';
+        google.script.run
+          .withSuccessHandler(function(rows){
+            tbody.innerHTML = "";
+            if(!rows || !rows.length){
+              tbody.innerHTML = '<tr><td colspan="6" class="muted">No logs yet.</td></tr>';
+              return;
+            }
+            rows.forEach(function(r){
+              const tr = document.createElement("tr");
+              tr.innerHTML =
+                '<td>' + escapeHtml(r.timestamp) + '</td>' +
+                '<td>' + escapeHtml(r.eventType) + '</td>' +
+                '<td>' + escapeHtml(r.action) + '</td>' +
+                '<td>' + escapeHtml(r.user) + '</td>' +
+                '<td>' + escapeHtml(r.status) + '</td>' +
+                '<td class="muted">' + escapeHtml(r.meta) + '</td>';
+              tbody.appendChild(tr);
+            });
+            toast("Recent logs loaded 🧾", "📊");
+          })
+          .withFailureHandler(function(){
+            tbody.innerHTML = '<tr><td colspan="6" class="muted">Failed to load logs.</td></tr>';
+          })
+          .MASTER_apiGetRecentLogs(30);
+      }
+
+      function surface_sidebar(){
+        mount(`
+          <h2>⚡ Sidebar Quick Panel</h2>
+          <div class="muted">Open links, manage folders, and run enhancements fast.</div>
+          <div class="btnrow">
+            <button class="primary" onclick="openLink('COLAB')">🧪 Colab</button>
+            <button class="secondary" onclick="openLink('GITHUB')">🐙 GitHub</button>
+            <button class="accent" onclick="openLink('WEBAPP')">🚀 Web App</button>
+            <button onclick="openDashboard()">📊 Dashboard</button>
+            <button onclick="showLinks()">🔗 Link Manager</button>
+            <button onclick="showEnhancement()">🧠 Enhancement Studio</button>
+          </div>
+          <div class="hr"></div>
+          <div class="muted">
+            Tip: if you need to copy a link, the opener dialog includes a copy button.
+          </div>
+        `);
+      }
+
+      function surface_enh_sidebar(){
+        mount(`
+          <h2>🧠 Enhancement Studio</h2>
+          <div class="muted">
+            Paste any completed deliverable and generate:
+            <ul>
+              <li>8-lens analysis</li>
+              <li>Prioritized proposals (What/Why/How/When/Measure)</li>
+              <li>LLM-ready prompt (framework v1.0)</li>
+              <li>Optional AI response if your endpoint is configured</li>
+            </ul>
+          </div>
+
+          <div class="field">
+            <label>Work Product Title</label>
+            <input id="wpTitle" placeholder="(Optional) A short name for this deliverable" />
+          </div>
+
+          <div class="field">
+            <label>Source Label</label>
+            <input id="wpSource" value="UI" />
+          </div>
+
+          <div class="field">
+            <label>Work Product Text</label>
+            <textarea id="wpText" placeholder="Paste your deliverable here…"></textarea>
+          </div>
+
+          <div class="btnrow">
+            <button class="primary" onclick="runEnhancement(false)">🧠 Generate (no AI call)</button>
+            <button class="secondary" onclick="runEnhancement(true)">🤖 Generate + Call AI (if configured)</button>
+            <button onclick="openReports()">📘 Open Reports Sheet</button>
+          </div>
+
+          <div id="enhOut" class="muted" style="margin-top:12px;"></div>
+        `);
+      }
+
+      function surface_prompt(){
+        mount(`
+          <h2>🧾 Enhancement Prompt Builder</h2>
+          <div class="muted">
+            This tool saves a complete enhancement package into <span class="kbd">Enhancement Reports</span>.
+            Use it when you want a clean prompt to run in your AI tool.
+          </div>
+
+          <div class="split" style="margin-top:12px;">
+            <div>
+              <div class="field">
+                <label>Work Product Title</label>
+                <input id="pbTitle" placeholder="Title (optional)" />
+              </div>
+              <div class="field">
+                <label>Source Label</label>
+                <input id="pbSource" value="Prompt Builder" />
+              </div>
+              <div class="field">
+                <label>Work Product Text</label>
+                <textarea id="pbText" placeholder="Paste deliverable text here…"></textarea>
+              </div>
+              <div class="btnrow">
+                <button class="primary" onclick="runPrompt(false)">🧾 Build + Save Prompt</button>
+                <button class="secondary" onclick="runPrompt(true)">🤖 Build + Call AI (if configured)</button>
+              </div>
+              <div id="pbMsg" class="muted" style="margin-top:10px;"></div>
+            </div>
+
+            <div>
+              <div class="tag">Output Preview</div>
+              <div class="muted" style="margin-top:10px;">
+                After running, open the <span class="kbd">Enhancement Reports</span> sheet.
+                The prompt and outputs are stored in columns for easy copy/paste and versioning.
+              </div>
+              <div class="hr"></div>
+              <div class="muted">
+                Optional AI calling uses Script Properties:
+                <ul>
+                  <li><span class="kbd">AI_HTTP_ENDPOINT</span></li>
+                  <li><span class="kbd">AI_HTTP_BEARER_TOKEN</span> (optional)</li>
+                  <li><span class="kbd">AI_HTTP_TIMEOUT_MS</span> (optional)</li>
+                  <li><span class="kbd">AI_HTTP_MODEL</span> (optional)</li>
+                  <li><span class="kbd">AI_HTTP_EXTRA_HEADERS_JSON</span> (optional)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        `);
+      }
+
+      function openReports(){
+        sound();
+        google.script.run.MASTER_openReportsSheet();
+        toast("Opening Enhancement Reports 📘", "🧠");
+      }
+
+      function runEnhancement(callAi){
+        sound();
+        const title = document.getElementById("wpTitle").value.trim();
+        const source = document.getElementById("wpSource").value.trim() || "UI";
+        const text = document.getElementById("wpText").value;
+        const out = document.getElementById("enhOut");
+        out.textContent = "Running…";
+
+        google.script.run
+          .withSuccessHandler(function(res){
+            if(!res || !res.ok){
+              out.innerHTML = '<span class="bad">Error:</span> ' + escapeHtml(res && res.message ? res.message : "Unknown");
+              return;
+            }
+            out.innerHTML = '<span class="ok">✅ Saved to Enhancement Reports.</span> Word count: ' + escapeHtml(String(res.wordCount)) +
+              (callAi ? '<br><span class="muted">AI call: ' + (res.ai && res.ai.ok ? '<span class="ok">success</span>' : '<span class="warn">not configured / failed</span>') + '</span>' : '');
+            toast("Enhancement package saved ✅", "🧠");
+            openReports();
+          })
+          .withFailureHandler(function(err){
+            out.innerHTML = '<span class="bad">Failed:</span> ' + escapeHtml(err && err.message ? err.message : err);
+          })
+          .MASTER_apiGenerateEnhancement({ title: title, source: source, workProductText: text, callAi: !!callAi });
+      }
+
+      function runPrompt(callAi){
+        sound();
+        const title = document.getElementById("pbTitle").value.trim();
+        const source = document.getElementById("pbSource").value.trim() || "Prompt Builder";
+        const text = document.getElementById("pbText").value;
+        const msg = document.getElementById("pbMsg");
+        msg.textContent = "Running…";
+        google.script.run
+          .withSuccessHandler(function(res){
+            if(!res || !res.ok){
+              msg.innerHTML = '<span class="bad">Error:</span> ' + escapeHtml(res && res.message ? res.message : "Unknown");
+              return;
+            }
+            msg.innerHTML = '<span class="ok">✅ Saved to Enhancement Reports.</span> Word count: ' + escapeHtml(String(res.wordCount)) +
+              (callAi ? '<br><span class="muted">AI call: ' + (res.ai && res.ai.ok ? '<span class="ok">success</span>' : '<span class="warn">not configured / failed</span>') + '</span>' : '');
+            toast("Prompt package saved ✅", "🧾");
+            openReports();
+          })
+          .withFailureHandler(function(err){
+            msg.innerHTML = '<span class="bad">Failed:</span> ' + escapeHtml(err && err.message ? err.message : err);
+          })
+          .MASTER_apiGenerateEnhancement({ title: title, source: source, workProductText: text, callAi: !!callAi });
+      }
+
+      function surface_webapp(){
+        mount(`
+          <h2>🌐 Web App Home</h2>
+          <div class="muted">
+            This UI is served by <span class="kbd">doGet()</span>. Deploy as Web App to share a sleek control hub ✨
+            <br><br>
+            Tip: In Apps Script → <b>Deploy</b> → <b>New deployment</b> → <b>Web app</b> 🚀
+          </div>
+          <div class="btnrow">
+            <button onclick="openDashboard()">📊 Open Dashboard</button>
+            <button class="secondary" onclick="showLinks()">🔗 Configure Links</button>
+            <button class="primary" onclick="openLink('COLAB')">🧪 Open Colab</button>
+            <button class="secondary" onclick="openLink('GITHUB')">🐙 Open GitHub</button>
+            <button class="accent" onclick="showEnhancement()">🧠 Enhancement Studio</button>
+          </div>
+        `);
+      }
+
+      // Boot
+      (function init(){
+        setTheme(APP.theme);
+        document.getElementById("brandTitle").textContent = APP.brand || "Master Automation Suite ✨";
+        document.getElementById("surfaceLine").textContent = (APP.surface || "ui").toUpperCase() + " • Joyful automation 😄⚡";
+
+        const surface = String(APP.surface || "webapp");
+        if(surface === "about") surface_about();
+        else if(surface === "links") surface_links();
+        else if(surface === "folders") surface_folders();
+        else if(surface === "logs") surface_logs();
+        else if(surface === "sidebar") surface_sidebar();
+        else if(surface === "enh_sidebar") surface_enh_sidebar();
+        else if(surface === "prompt") surface_prompt();
+        else surface_webapp();
+      })();
+    </script>
+  </body>
+</html>
